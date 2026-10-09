@@ -1228,6 +1228,244 @@
     },
     "request": {
       "$defs": {
+        "AgentCreateParams": {
+          "properties": {
+            "agent": {
+              "$ref": "#/schemas/request/$defs/AgentLaunchParams"
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "focus": {
+              "default": false,
+              "type": "boolean"
+            },
+            "label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trust_repository": {
+              "type": "boolean"
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        "AgentCreateParams2": {
+          "properties": {
+            "agent": {
+              "$ref": "#/schemas/request/$defs/AgentLaunchParams"
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "focus": {
+              "default": false,
+              "type": "boolean"
+            },
+            "label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trust_repository": {
+              "type": "boolean"
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        "AgentCreateParams3": {
+          "properties": {
+            "agent": {
+              "$ref": "#/schemas/request/$defs/AgentLaunchParams"
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "focus": {
+              "default": false,
+              "type": "boolean"
+            },
+            "label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        "AgentCreateParams4": {
+          "properties": {
+            "agent": {
+              "$ref": "#/schemas/request/$defs/AgentLaunchParams"
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "direction": {
+              "$ref": "#/schemas/request/$defs/SplitDirection"
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "focus": {
+              "default": false,
+              "type": "boolean"
+            },
+            "ratio": {
+              "format": "float",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "right_click": {
+              "$ref": "#/schemas/request/$defs/PaneRightClickTarget",
+              "default": "herdr"
+            },
+            "target_pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "direction",
+            "agent"
+          ],
+          "type": "object"
+        },
+        "AgentLaunchParams": {
+          "properties": {
+            "command": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "tab_label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "timeout_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "kind",
+            "command"
+          ],
+          "type": "object"
+        },
         "AgentPromptParams": {
           "properties": {
             "target": {
@@ -5100,11 +5338,43 @@
         {
           "properties": {
             "method": {
+              "const": "worktree.create_agent",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AgentCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "worktree.open",
               "type": "string"
             },
             "params": {
               "$ref": "#/schemas/request/$defs/WorktreeOpenParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "worktree.open_agent",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AgentCreateParams2"
             }
           },
           "required": [
@@ -5137,6 +5407,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/TabCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tab.create_agent",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AgentCreateParams3"
             }
           },
           "required": [
@@ -5441,6 +5727,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/PaneSplitParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "pane.split_agent",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AgentCreateParams4"
             }
           },
           "required": [
@@ -9300,6 +9602,12 @@
             },
             {
               "properties": {
+                "already_open": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
                 "root_pane": {
                   "$ref": "#/schemas/success_response/$defs/PaneInfo"
                 },
@@ -9449,6 +9757,44 @@
               },
               "required": [
                 "type",
+                "agent"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "agent": {
+                  "$ref": "#/schemas/success_response/$defs/AgentInfo"
+                },
+                "pane": {
+                  "$ref": "#/schemas/success_response/$defs/PaneInfo"
+                },
+                "tab": {
+                  "$ref": "#/schemas/success_response/$defs/TabInfo"
+                },
+                "type": {
+                  "const": "agent_created",
+                  "type": "string"
+                },
+                "workspace": {
+                  "$ref": "#/schemas/success_response/$defs/WorkspaceInfo"
+                },
+                "worktree": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/schemas/success_response/$defs/WorktreeInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "type",
+                "workspace",
+                "tab",
+                "pane",
                 "agent"
               ],
               "type": "object"

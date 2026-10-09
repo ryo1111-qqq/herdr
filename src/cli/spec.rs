@@ -241,6 +241,7 @@ fn worktree_command() -> Command {
         )
         .subcommand(
             Command::new("create")
+                .arg(option("agent-launch", "JSON"))
                 .about("Create and open a Git worktree")
                 .arg(option("workspace", "ID"))
                 .arg(path_option("cwd", "PATH"))
@@ -254,6 +255,7 @@ fn worktree_command() -> Command {
         )
         .subcommand(
             Command::new("open")
+                .arg(option("agent-launch", "JSON"))
                 .about("Open an existing Git worktree")
                 .arg(option("workspace", "ID"))
                 .arg(path_option("cwd", "PATH"))
@@ -283,6 +285,7 @@ fn tab_command() -> Command {
         )
         .subcommand(
             Command::new("create")
+                .arg(option("agent-launch", "JSON"))
                 .about("Create a tab")
                 .arg(option("workspace", "WORKSPACE_ID"))
                 .arg(path_option("cwd", "PATH"))
@@ -548,6 +551,8 @@ fn pane_command() -> Command {
         )
         .subcommand(
             Command::new("split")
+                .arg(option("agent-launch", "JSON"))
+                .arg(option("workspace", "WORKSPACE_ID"))
                 .about("Split a pane")
                 .arg(Arg::new("pane_id").value_name("PANE_ID"))
                 .args(current_pane_args())

@@ -21,12 +21,22 @@ impl App {
     ) -> bool {
         match request.method {
             crate::api::schema::Method::WorktreeList(_)
-            | crate::api::schema::Method::WorktreeOpen(_) => {
+            | crate::api::schema::Method::WorktreeOpen(_)
+            | crate::api::schema::Method::WorktreeOpenAgent(_) => {
                 self.start_api_worktree_read(request, respond_to, client_local);
                 true
             }
             crate::api::schema::Method::WorktreeCreate(params) => {
-                self.start_api_worktree_create(request.id, params, respond_to);
+                self.start_api_worktree_create(request.id, params, respond_to, None);
+                true
+            }
+            crate::api::schema::Method::WorktreeCreateAgent(params) => {
+                self.start_api_worktree_create(
+                    request.id,
+                    params.create,
+                    respond_to,
+                    Some(params.agent),
+                );
                 true
             }
             crate::api::schema::Method::WorktreeRemove(params) => {
@@ -103,7 +113,14 @@ impl App {
         id: String,
         params: WorktreeCreateParams,
         respond_to: std::sync::mpsc::Sender<String>,
+        launch: Option<crate::api::schema::AgentLaunchParams>,
     ) {
+        if let Some(launch) = &launch {
+            if let Err((code, message)) = self.prepare_direct_agent(launch) {
+                Self::send_api_response(respond_to, encode_error(id, &code, message));
+                return;
+            }
+        }
         let branch = params
             .branch
             .unwrap_or_else(|| {
@@ -130,6 +147,17 @@ impl App {
                 return;
             }
         };
+        if launch.is_some() && source.workspace_idx.is_none() {
+            Self::send_api_response(
+                respond_to,
+                encode_error(
+                    id,
+                    "invalid_agent_target",
+                    "direct worktree launch requires an existing parent workspace",
+                ),
+            );
+            return;
+        }
         let checkout_path = match params.path {
             Some(path) => match absolute_user_path(&path) {
                 Ok(path) => path,
@@ -178,6 +206,7 @@ impl App {
                 .and_then(|ws| ws.worktree_space().cloned())
         });
         let api_request = ApiWorktreeAddRequest {
+            launch,
             id,
             operation_id,
             checkout_key,
@@ -445,6 +474,32 @@ impl App {
             repo_key: api.repo_key,
             repo_name: api.repo_name,
         };
+        let launch = match api
+            .launch
+            .as_ref()
+            .map(|launch| self.prepare_direct_agent(launch))
+            .transpose()
+        {
+            Ok(launch) => launch,
+            Err((code, message)) => {
+                Self::send_api_response(api.respond_to, encode_error(api.id, &code, message));
+                return;
+            }
+        };
+        if launch.is_some()
+            && (source.workspace_idx.is_none()
+                || self.open_workspace_idx_for_checkout(&result.path).is_some())
+        {
+            Self::send_api_response(
+                api.respond_to,
+                encode_error(
+                    api.id,
+                    "invalid_agent_target",
+                    "direct worktree target already opened or parent changed",
+                ),
+            );
+            return;
+        }
         if let Err(err) = self.ensure_source_parent_membership(&mut source, true) {
             Self::send_api_response(api.respond_to, encode_error(api.id, err.code, err.message));
             return;
@@ -457,7 +512,15 @@ impl App {
                 }
                 (ws_idx, false)
             } else {
-                match self.create_workspace_with_options(result.path.clone(), api.focus) {
+                match self.create_workspace_with_direct_launch(
+                    result.path.clone(),
+                    api.focus,
+                    launch
+                        .as_ref()
+                        .map(|launch| launch.env.clone())
+                        .unwrap_or_default(),
+                    launch.as_ref(),
+                ) {
                     Ok(ws_idx) => (ws_idx, true),
                     Err(err) => {
                         Self::send_api_response(
@@ -485,6 +548,10 @@ impl App {
                 ws.set_custom_name(label);
             }
         }
+        let tab_idx = self.state.workspaces[ws_idx].active_tab;
+        if let Some(label) = launch.as_ref().and_then(|launch| launch.tab_label.clone()) {
+            self.state.workspaces[ws_idx].tabs[tab_idx].set_custom_name(label);
+        }
         self.state.mark_session_dirty();
         if created_workspace {
             self.emit_workspace_open_events(ws_idx);
@@ -501,7 +568,17 @@ impl App {
             return;
         };
         self.emit_worktree_created_event(ws_idx, worktree.clone());
-        let tab_idx = self.state.workspaces[ws_idx].active_tab;
+        if launch.is_some() {
+            let response = self.created_agent_response(
+                api.id,
+                ws_idx,
+                tab_idx,
+                self.state.workspaces[ws_idx].tabs[tab_idx].root_pane,
+                Some(worktree),
+            );
+            Self::send_api_response(api.respond_to, response);
+            return;
+        }
         let response = encode_success(
             api.id,
             ResponseResult::WorktreeCreated {

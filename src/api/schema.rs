@@ -97,12 +97,18 @@ pub enum Method {
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]
     WorktreeCreate(WorktreeCreateParams),
+    #[serde(rename = "worktree.create_agent")]
+    WorktreeCreateAgent(AgentCreateParams<WorktreeCreateParams>),
     #[serde(rename = "worktree.open")]
     WorktreeOpen(WorktreeOpenParams),
+    #[serde(rename = "worktree.open_agent")]
+    WorktreeOpenAgent(AgentCreateParams<WorktreeOpenParams>),
     #[serde(rename = "worktree.remove")]
     WorktreeRemove(WorktreeRemoveParams),
     #[serde(rename = "tab.create")]
     TabCreate(TabCreateParams),
+    #[serde(rename = "tab.create_agent")]
+    TabCreateAgent(AgentCreateParams<TabCreateParams>),
     #[serde(rename = "tab.list")]
     TabList(TabListParams),
     #[serde(rename = "tab.get")]
@@ -141,6 +147,8 @@ pub enum Method {
     AgentWait(AgentWaitParams),
     #[serde(rename = "pane.split")]
     PaneSplit(PaneSplitParams),
+    #[serde(rename = "pane.split_agent")]
+    PaneSplitAgent(AgentCreateParams<PaneSplitParams>),
     #[serde(rename = "pane.swap")]
     PaneSwap(PaneSwapParams),
     #[serde(rename = "pane.move")]

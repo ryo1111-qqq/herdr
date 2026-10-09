@@ -32,6 +32,23 @@ use super::responses::{encode_error, encode_success};
 
 impl App {
     pub(super) fn handle_pane_split(&mut self, id: String, params: PaneSplitParams) -> String {
+        self.handle_pane_split_with_agent(id, params, None)
+    }
+
+    pub(super) fn handle_pane_split_with_agent(
+        &mut self,
+        id: String,
+        params: PaneSplitParams,
+        agent: Option<crate::api::schema::AgentLaunchParams>,
+    ) -> String {
+        let launch = match agent
+            .as_ref()
+            .map(|agent| self.prepare_direct_agent(agent))
+            .transpose()
+        {
+            Ok(launch) => launch,
+            Err((code, message)) => return encode_error(id, &code, message),
+        };
         let target = if let Some(target_pane_id) = params.target_pane_id.as_deref() {
             self.parse_pane_id(target_pane_id)
         } else if let Some(workspace_id) = params.workspace_id.as_deref() {
@@ -52,6 +69,29 @@ impl App {
             Ok(env) => env,
             Err((code, message)) => return encode_error(id, &code, message),
         };
+        if let Some(launch) = &launch {
+            if params.workspace_id.as_deref() != Some(self.public_workspace_id(ws_idx).as_str())
+                || self.parse_current_public_pane_id(params.target_pane_id.as_deref().unwrap_or(""))
+                    != Some((ws_idx, target_pane_id))
+                || self.state.workspaces[ws_idx]
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.panes.contains_key(&target_pane_id))
+                    .and_then(|i| self.tab_info(ws_idx, i))
+                    .map(|tab| tab.label)
+                    != launch.tab_label
+            {
+                return encode_error(
+                    id,
+                    "invalid_agent_target",
+                    "split target workspace or tab changed",
+                );
+            }
+        }
+        let mut extra_env = extra_env;
+        if let Some(launch) = &launch {
+            extra_env.extend(launch.env.clone());
+        }
         let direction = match params.direction {
             crate::api::schema::SplitDirection::Right => ratatui::layout::Direction::Horizontal,
             crate::api::schema::SplitDirection::Down => ratatui::layout::Direction::Vertical,
@@ -77,40 +117,60 @@ impl App {
             return encode_error(id, "pane_not_found", "pane not found");
         };
         let shell_config = crate::pane::PaneShellConfig::new(&default_shell, self.state.shell_mode);
-        let split_result = match params.ratio {
-            Some(ratio) => ws.split_pane_with_ratio(
+        let split_result = if let Some(launch) = &launch {
+            ws.split_pane_argv_command_with_ratio(
                 target_pane_id,
                 direction,
-                ratio,
+                params.ratio.unwrap_or(0.5),
                 rows,
                 cols,
                 split_cwd,
+                &launch.argv,
+                extra_env,
                 scrollback_limit_bytes,
                 host_terminal_theme,
                 host_terminal_appearance,
-                shell_config,
-                extra_env,
                 params.focus,
-            ),
-            None => ws.split_pane(
-                target_pane_id,
-                direction,
-                rows,
-                cols,
-                split_cwd,
-                scrollback_limit_bytes,
-                host_terminal_theme,
-                host_terminal_appearance,
-                shell_config,
-                extra_env,
-                params.focus,
-            ),
+            )
+        } else {
+            match params.ratio {
+                Some(ratio) => ws.split_pane_with_ratio(
+                    target_pane_id,
+                    direction,
+                    ratio,
+                    rows,
+                    cols,
+                    split_cwd,
+                    scrollback_limit_bytes,
+                    host_terminal_theme,
+                    host_terminal_appearance,
+                    shell_config,
+                    extra_env,
+                    params.focus,
+                ),
+                None => ws.split_pane(
+                    target_pane_id,
+                    direction,
+                    rows,
+                    cols,
+                    split_cwd,
+                    scrollback_limit_bytes,
+                    host_terminal_theme,
+                    host_terminal_appearance,
+                    shell_config,
+                    extra_env,
+                    params.focus,
+                ),
+            }
         };
-        let (target_tab_idx, new_pane) = match split_result {
+        let (target_tab_idx, mut new_pane) = match split_result {
             Some(Ok(result)) => result,
             Some(Err(err)) => return encode_error(id, "pane_split_failed", err.to_string()),
             None => return encode_error(id, "pane_not_found", "pane not found"),
         };
+        if let Some(launch) = &launch {
+            launch.attach(&mut new_pane.terminal);
+        }
         if let Some(pane) = self.state.workspaces[ws_idx].pane_state_mut(new_pane.pane_id) {
             pane.right_click_passthrough = matches!(
                 params.right_click,
@@ -138,6 +198,9 @@ impl App {
         });
         self.emit_layout_updated_event(ws_idx, target_tab_idx);
 
+        if launch.is_some() {
+            return self.created_agent_response(id, ws_idx, target_tab_idx, new_pane.pane_id, None);
+        }
         encode_success(id, ResponseResult::PaneInfo { pane })
     }
 

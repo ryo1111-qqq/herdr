@@ -615,8 +615,23 @@ fn parse_right_click_target(value: &str) -> Result<PaneRightClickTarget, String>
 }
 
 fn pane_split(args: &[String]) -> std::io::Result<i32> {
+    let (mut args, launch) = super::agent::take_agent_launch(args)?;
+    let workspace = if launch.is_some() {
+        if let Some(index) = args.iter().position(|arg| arg == "--workspace") {
+            let value = args.get(index + 1).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing workspace")
+            })?;
+            let workspace = super::normalize_workspace_id(value);
+            args.drain(index..index + 2);
+            Some(workspace)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let env_pane_id = super::target::caller_pane_id();
-    let params = match parse_pane_split_args(args, env_pane_id.as_deref()) {
+    let mut params = match parse_pane_split_args(&args, env_pane_id.as_deref()) {
         Ok(params) => params,
         Err(message) => {
             eprintln!("{message}");
@@ -624,7 +639,16 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
         }
     };
 
-    super::runtime::pane_split(params)
+    if let Some(agent) = launch {
+        params.workspace_id = workspace;
+        let method = Method::PaneSplitAgent(crate::api::schema::AgentCreateParams {
+            create: params,
+            agent: agent.clone(),
+        });
+        super::agent::create_direct_agent(method, &agent)
+    } else {
+        super::runtime::pane_split(params)
+    }
 }
 
 fn parse_pane_split_args(
@@ -722,7 +746,7 @@ fn parse_pane_split_args(
 
     let Some(direction) = direction else {
         return Err(
-            "usage: herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus] [--no-focus]"
+            "usage: herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus] [--no-focus] [--agent-launch JSON]"
                 .into(),
         );
     };
@@ -1687,8 +1711,9 @@ fn print_pane_help() {
     eprintln!("  herdr pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]");
     eprintln!("  herdr pane input [<pane_id>|--pane ID|--current] --right-click herdr|pane");
     eprintln!(
-        "  herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus] [--no-focus]"
+        "  herdr pane split [<pane_id>|--pane ID|--current] --direction right|down [--ratio FLOAT] [--cwd PATH] [--env KEY=VALUE] [--right-click herdr|pane] [--focus] [--no-focus] [--agent-launch JSON]"
     );
+    eprintln!("    Direct agent split also requires --workspace ID and agent.tab_label matching the target tab.");
     eprintln!("  herdr pane swap --direction left|right|up|down [--pane ID|--current]");
     eprintln!("  herdr pane swap --source-pane ID --target-pane ID");
     eprintln!("  herdr pane move <pane_id> --tab <tab_id> --split right|down [--target-pane ID] [--ratio FLOAT] [--focus|--no-focus]");
