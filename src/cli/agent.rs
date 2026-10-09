@@ -979,12 +979,17 @@ pub(super) fn take_agent_launch(
                     "missing agent launch JSON",
                 )
             })?;
-            launch = Some(serde_json::from_str(value).map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "invalid agent launch JSON",
-                )
-            })?);
+            let mut parsed: crate::api::schema::AgentLaunchParams = serde_json::from_str(value)
+                .map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "invalid agent launch JSON",
+                    )
+                })?;
+            if let Some(kind) = crate::detect::parse_agent_label(&parsed.kind) {
+                parsed.kind = crate::detect::agent_label(kind).to_owned();
+            }
+            launch = Some(parsed);
             index += 2;
         } else {
             plain.push(args[index].clone());
@@ -1066,6 +1071,27 @@ mod direct_creation_tests {
             assert!(
                 take_agent_launch(&args.into_iter().map(String::from).collect::<Vec<_>>()).is_err()
             );
+        }
+    }
+
+    #[test]
+    fn direct_agent_launch_cli_canonicalizes_kind_aliases_and_case() {
+        for (kind, expected, executable) in [
+            ("claude-code", "claude", "claude"),
+            ("CLAUDE", "claude", "claude"),
+            ("Claude-Code", "claude", "claude"),
+            ("PI", "pi", "pi"),
+            ("Codex", "codex", "codex"),
+            ("cursor-agent", "cursor", "cursor-agent"),
+        ] {
+            let spec = serde_json::json!({
+                "name": "reviewer", "kind": kind, "command": [executable, "a b"]
+            });
+            let (_, launch) =
+                take_agent_launch(&["--agent-launch".into(), spec.to_string()]).unwrap();
+            let launch = launch.unwrap();
+            assert_eq!(launch.kind, expected, "kind: {kind}");
+            assert_eq!(launch.command, [executable, "a b"]);
         }
     }
 }

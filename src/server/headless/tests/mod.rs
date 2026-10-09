@@ -2596,6 +2596,80 @@ async fn public_background_tab_create_preserves_client_locations() {
     shutdown_test_runtimes(&mut server);
 }
 
+#[cfg(unix)]
+async fn assert_direct_agent_tab_client_focus(focus: bool) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut server = test_headless_server();
+    let dir = server.client_socket_path.parent().unwrap().to_owned();
+    let program = dir.join("pi");
+    fs::write(&program, "#!/bin/sh\nexit 0\n").unwrap();
+    fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut workspace = crate::workspace::Workspace::test_new("direct-create");
+    workspace.test_add_tab(Some("second"));
+    server.app.state.workspaces = vec![workspace];
+    server.app.state.ensure_test_terminals();
+    server.app.state.active = Some(0);
+    server.app.state.selected = 0;
+    server.app.state.mode = crate::app::Mode::Terminal;
+    let workspace_id = server.app.public_workspace_id(0);
+    let first_tab_id = server.app.public_tab_id(0, 0).unwrap();
+    let second_tab_id = server.app.public_tab_id(0, 1).unwrap();
+    let (first_control, _) = connect_matching_test_shell(&mut server, 71);
+    let (second_control, _) = connect_matching_test_shell(&mut server, 72);
+    let _ = first_control.recv().unwrap();
+    let _ = second_control.recv().unwrap();
+    assert!(server.focus_shell_client_on_tab(71, &second_tab_id));
+    let (respond_to, response_rx) = std::sync::mpsc::channel();
+    server.handle_api_request_with_shutdown_check(crate::api::ApiRequestMessage {
+        request: crate::api::schema::Request {
+            id: "create-direct-tab".into(),
+            method: crate::api::schema::Method::TabCreateAgent(
+                crate::api::schema::AgentCreateParams {
+                    create: crate::api::schema::TabCreateParams {
+                        workspace_id: Some(workspace_id),
+                        cwd: Some(dir.display().to_string()),
+                        focus,
+                        label: Some("owned job".into()),
+                        env: Default::default(),
+                    },
+                    agent: crate::api::schema::AgentLaunchParams {
+                        name: "pi-owned".into(),
+                        kind: "pi".into(),
+                        command: vec![program.display().to_string()],
+                        env: Default::default(),
+                        tab_label: Some("owned job".into()),
+                        timeout_ms: None,
+                    },
+                },
+            ),
+        },
+        respond_to,
+        response_write_complete: None,
+    });
+    let response: serde_json::Value = serde_json::from_str(&response_rx.recv().unwrap()).unwrap();
+    shutdown_test_runtimes(&mut server);
+    assert_eq!(response["result"]["type"], "agent_created", "{response}");
+    let created_tab = response["result"]["tab"]["tab_id"].as_str().unwrap();
+    for (client, previous_tab) in [(71, second_tab_id.as_str()), (72, first_tab_id.as_str())] {
+        assert_eq!(
+            server.shell_tab_id_for_client(client).as_deref(),
+            Some(if focus { created_tab } else { previous_tab })
+        );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn public_direct_agent_tab_create_focus_updates_client_locations() {
+    assert_direct_agent_tab_client_focus(true).await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn public_direct_agent_tab_create_no_focus_preserves_client_locations() {
+    assert_direct_agent_tab_client_focus(false).await;
+}
+
 #[tokio::test]
 async fn public_workspace_focus_preserves_each_clients_remembered_tabs() {
     let mut server = test_headless_server();

@@ -864,6 +864,7 @@ impl HeadlessServer {
         let create_focus_requested = match &msg.request.method {
             api::schema::Method::WorkspaceCreate(params) => params.focus,
             api::schema::Method::TabCreate(params) => params.focus,
+            api::schema::Method::TabCreateAgent(params) => params.create.focus,
             _ => false,
         };
         let inspect_pane_move = matches!(
