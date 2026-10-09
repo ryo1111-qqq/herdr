@@ -1,3 +1,4 @@
+// Modified by ryo1111-qqq on 2026-10-09: verify worktree response root provenance.
 use std::path::{Path, PathBuf};
 
 use crate::api::schema::{
@@ -767,17 +768,21 @@ mod tests {
             },
         );
 
+        let value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(value["result"]["already_open"], false);
         let success: SuccessResponse = serde_json::from_str(&response).unwrap();
         let ResponseResult::WorktreeCreated {
             workspace,
             tab,
             root_pane,
             worktree,
+            already_open,
         } = success.result
         else {
             panic!("expected worktree_created response");
         };
         assert_eq!(tab.workspace_id, workspace.workspace_id);
+        assert_eq!(already_open, Some(false));
         assert_eq!(root_pane.workspace_id, workspace.workspace_id);
         assert_eq!(worktree.branch.as_deref(), Some("worktree/api-create"));
         assert!(Path::new(&worktree.path).starts_with(&worktree_root));
@@ -1109,6 +1114,81 @@ mod tests {
         assert_eq!(error.error.code, "worktree_create_failed");
         assert!(app.pending_api_worktree_creates.is_empty());
 
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[tokio::test]
+    async fn deferred_api_worktree_create_reports_concurrently_opened_root() {
+        let event_hub = crate::api::EventHub::default();
+        let mut app = test_app_with_event_hub(event_hub.clone());
+        let repo = create_committed_repo("api-worktree-reused-root-repo");
+        let checkout = unique_temp_path("api-worktree-reused-root-checkout");
+        std::fs::create_dir_all(&checkout).unwrap();
+        let checkout_key = crate::worktree::canonical_or_original(&checkout);
+        let mut source = Workspace::test_new("source");
+        source.identity_cwd = repo.clone();
+        source.worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
+            key: "repo-key".into(),
+            label: "herdr".into(),
+            repo_root: repo.clone(),
+            checkout_path: repo.clone(),
+            is_linked_worktree: false,
+        });
+        let source_id = source.id.clone();
+        let mut existing = Workspace::test_new("external work");
+        existing.identity_cwd = checkout.clone();
+        existing.worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
+            key: "repo-key".into(),
+            label: "herdr".into(),
+            repo_root: repo.clone(),
+            checkout_path: checkout.clone(),
+            is_linked_worktree: true,
+        });
+        app.state.workspaces = vec![source, existing];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+        let kept_pane = app.root_pane_info(1, 0).unwrap();
+        let kept_tab = app.tab_info(1, 0).unwrap();
+        let kept_terminals = app.state.terminals.len();
+        app.pending_api_worktree_creates
+            .insert(checkout_key.clone(), 9);
+        let (respond_to, response_rx) = response_channel();
+        app.handle_api_worktree_add_finished(WorktreeAddResult {
+            path: checkout.clone(),
+            api_request: Some(ApiWorktreeAddRequest {
+                id: "req".into(),
+                operation_id: 9,
+                checkout_key,
+                source_workspace_id: Some(source_id),
+                source_existing_membership: None,
+                source_checkout_path: repo.clone(),
+                source_repo_root: repo.clone(),
+                repo_key: "repo-key".into(),
+                repo_name: "herdr".into(),
+                label: None,
+                focus: false,
+                respond_to,
+            }),
+            result: Ok(()),
+        });
+        let response = response_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(value["result"]["already_open"], true);
+        assert_eq!(app.state.workspaces.len(), 2);
+        assert_eq!(app.state.terminals.len(), kept_terminals);
+        assert_eq!(app.root_pane_info(1, 0).unwrap(), kept_pane);
+        assert_eq!(app.tab_info(1, 0).unwrap(), kept_tab);
+        assert_eq!(app.state.active, Some(0));
+        assert!(!event_hub.events_after(0).iter().any(|(_, event)| {
+            matches!(
+                event.event,
+                EventKind::WorkspaceCreated | EventKind::PaneCreated | EventKind::TabCreated
+            )
+        }));
+        let _ = std::fs::remove_dir_all(checkout);
         let _ = std::fs::remove_dir_all(repo);
     }
 

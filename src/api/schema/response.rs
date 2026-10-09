@@ -1,3 +1,4 @@
+// Modified by ryo1111-qqq on 2026-10-09: expose optional worktree root provenance.
 use serde::{Deserialize, Serialize};
 
 use super::agents::AgentInfo;
@@ -71,6 +72,8 @@ pub enum ResponseResult {
         tab: TabInfo,
         root_pane: PaneInfo,
         worktree: WorktreeInfo,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        already_open: Option<bool>,
     },
     WorktreeOpened {
         workspace: WorkspaceInfo,
