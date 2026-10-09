@@ -1,3 +1,4 @@
+// Modified in this fork: shared worktree tabs and close confirmation.
 use std::collections::{HashMap, HashSet, VecDeque};
 
 mod actions;
@@ -33,6 +34,7 @@ mod scroll;
 mod settings;
 mod state;
 mod surface_patch;
+mod tab_navigation;
 mod text_editor;
 mod word_selection;
 mod worktrees;

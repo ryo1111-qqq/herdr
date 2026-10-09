@@ -1,3 +1,4 @@
+// Modified in this fork: shared worktree tabs and close confirmation.
 use super::*;
 
 impl ClientShellState {
@@ -954,21 +955,13 @@ impl ClientShellState {
                 Some(Method::WorkspaceFocus(WorkspaceTarget { workspace_id }))
             }
             KeybindAction::SwitchTab(index) => {
-                let tabs = snapshot
-                    .tabs
-                    .iter()
-                    .filter(|tab| tab.workspace_id == focused_workspace)
-                    .collect::<Vec<_>>();
+                let tabs = super::tab_navigation::visible_tabs(snapshot);
                 Some(Method::TabFocus(TabTarget {
                     tab_id: tabs.get(index)?.tab_id.clone(),
                 }))
             }
             KeybindAction::PreviousTab | KeybindAction::NextTab => {
-                let tabs = snapshot
-                    .tabs
-                    .iter()
-                    .filter(|tab| tab.workspace_id == focused_workspace)
-                    .collect::<Vec<_>>();
+                let tabs = super::tab_navigation::visible_tabs(snapshot);
                 let focused_tab = focused_tab?;
                 let current = tabs.iter().position(|tab| tab.tab_id == focused_tab)?;
                 let delta = if action == KeybindAction::PreviousTab {

@@ -3,6 +3,8 @@ title: How to work with Herdr
 description: Run Herdr locally, inside SSH, or through remote attach.
 ---
 
+{/* Modified in this fork: document shared worktree tabs and close behavior. */}
+
 Run Herdr where the work lives. Attach from wherever you are.
 
 Herdr is a background session server plus one or more terminal clients. Panes keep running in the server. Clients attach, detach, and render the session.
@@ -16,6 +18,11 @@ herdr
 ```
 
 Herdr starts or attaches to your local background session automatically. You do not manage sockets. Run shells, servers, tests, and agents normally inside panes.
+
+
+Spaces for the main checkout and linked worktrees of the same Git repository share a tab bar. Main-checkout tabs come first; worktree tabs follow the Space order and include their Space name. The initial worktree tab remains visible alongside job tabs. Selecting a tab focuses its owning Space and panes without moving processes or changing their working directories. Other repositories and server endpoints keep separate tab bars. The + button creates a tab in the selected Space; tabs can be reordered within their owning Space. Overflow uses the existing left/right controls across the entire repository group. Keyboard navigation reveals the selected tab; subsequent scrolling continues from that position.
+
+Right-click the main Space and choose Close group to stop its Spaces and panes, including a controller tab. Closing a child Space stops every tab in that checkout, including other jobs that share it. With confirm_close enabled, the confirmation shows Space/pane counts and warns that unfinished work will stop; it does not detect unfinished work or unsaved changes. Cancel if any work should remain open. Closing Spaces preserves Git checkouts, branches and files; Delete worktree checkout... is a separate action.
 
 Detach the client with `ctrl+b q`. Your panes keep running.
 

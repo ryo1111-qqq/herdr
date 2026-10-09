@@ -1,3 +1,4 @@
+// Modified in this fork: shared worktree tabs and close confirmation.
 use super::*;
 use crate::api::schema::AgentStatus;
 use crate::protocol::{
@@ -260,4 +261,5 @@ mod link_hover;
 mod mobile;
 mod mouse_selection;
 mod popup_focus_projection;
+mod shared_tabs;
 mod startup_overlays;
