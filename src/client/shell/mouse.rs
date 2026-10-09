@@ -2082,19 +2082,7 @@ impl ClientShellState {
                     return;
                 }
                 if super::contains(self.hits.tab_scroll_right, point) {
-                    let tab_count = self
-                        .snapshot
-                        .as_deref()
-                        .and_then(|snapshot| {
-                            snapshot.focused_workspace_id.as_deref().map(|id| {
-                                snapshot
-                                    .tabs
-                                    .iter()
-                                    .filter(|tab| tab.workspace_id == id)
-                                    .count()
-                            })
-                        })
-                        .unwrap_or(0);
+                    let tab_count = self.focused_tab_count();
                     self.tab_scroll = self
                         .tab_scroll
                         .saturating_add(1)
