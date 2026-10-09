@@ -1,3 +1,4 @@
+// Modified in this fork: shared worktree tabs and close confirmation.
 use super::*;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -473,6 +474,16 @@ impl ClientShellState {
         let on_tab_row = point.1 == first_rect.y;
         if !on_tab_row {
             return None;
+        }
+        // Shared tabs are focus targets, not destinations for cross-Space moves.
+        for (rect, tab_id) in &self.hits.tabs {
+            if !tabs.iter().any(|tab| tab.tab_id == *tab_id)
+                && (super::contains(*rect, point)
+                    || (rect.x < first_rect.x && point.0 < first_rect.x)
+                    || (rect.x > last_rect.x && point.0 >= last_rect.right()))
+            {
+                return None;
+            }
         }
         if super::contains(self.hits.tab_scroll_left, point) {
             return Some(0);
@@ -1242,7 +1253,10 @@ impl ClientShellState {
                     .column
                     .abs_diff(press.start_column)
                     .max(mouse.row.abs_diff(press.start_row));
-                if delta >= 1 {
+                let local = self.snapshot.as_deref().is_some_and(|snapshot| {
+                    snapshot.focused_workspace_id.as_deref() == Some(press.workspace_id.as_str())
+                });
+                if delta >= 1 && local {
                     if let Some(insert_index) = self.tab_drop_index_at(point) {
                         self.chrome_drag = Some(ClientChromeDrag::Tab {
                             tab_id: press.tab_id.clone(),

@@ -1,3 +1,4 @@
+// Modified in this fork: shared worktree tabs and close confirmation.
 use super::*;
 
 const TAB_SCROLL_BUTTON_WIDTH: u16 = 3;
@@ -16,15 +17,33 @@ pub(crate) fn render_tab_bar(
 ) {
     let palette = &config.palette;
     buffer.set_style(area, Style::default().bg(palette.panel_bg));
-    let tabs = snapshot
-        .tabs
+    let tabs = super::super::tab_navigation::visible_tabs(snapshot);
+    let shared = tabs
         .iter()
-        .filter(|tab| Some(tab.workspace_id.as_str()) == snapshot.focused_workspace_id.as_deref())
-        .collect::<Vec<_>>();
+        .any(|tab| Some(tab.workspace_id.as_str()) != snapshot.focused_workspace_id.as_deref());
+    let child_labels = snapshot
+        .workspaces
+        .iter()
+        .filter(|workspace| {
+            shared
+                && workspace
+                    .worktree
+                    .as_ref()
+                    .is_some_and(|worktree| worktree.is_linked_worktree)
+        })
+        .map(|workspace| (workspace.workspace_id.as_str(), workspace.label.as_str()))
+        .collect::<HashMap<_, _>>();
+    let label = |tab: &ClientShellTab| {
+        let name = tab_label(tab);
+        match child_labels.get(tab.workspace_id.as_str()) {
+            Some(owner) => format!("{owner} · {name}"),
+            None => name,
+        }
+    };
     let desired_widths = tabs
         .iter()
         .map(|tab| {
-            let label = tab_label(tab);
+            let label = label(tab);
             display_width(&label).saturating_add(4).max(MIN_TAB_WIDTH)
         })
         .collect::<Vec<_>>();
@@ -92,7 +111,7 @@ pub(crate) fn render_tab_bar(
     let mut first_visible = None;
     let mut last_visible = None;
     for (index, tab) in tabs.iter().enumerate().skip(*tab_scroll) {
-        let name = tab_label(tab);
+        let name = label(tab);
         let desired = desired_widths[index];
         let remaining = tab_right.saturating_sub(x);
         let width = desired.min(remaining);
@@ -209,7 +228,14 @@ pub(crate) fn render_tab_bar(
     }
 
     if let Some(insert_index) = tab_drag_insert_index {
-        if let Some(indicator_x) = tab_drop_indicator_x(hits, &tabs, insert_index) {
+        let local_tabs = tabs
+            .iter()
+            .copied()
+            .filter(|tab| {
+                Some(tab.workspace_id.as_str()) == snapshot.focused_workspace_id.as_deref()
+            })
+            .collect::<Vec<_>>();
+        if let Some(indicator_x) = tab_drop_indicator_x(hits, &local_tabs, insert_index) {
             put_text(
                 buffer,
                 indicator_x.min(content.right().saturating_sub(1)),

@@ -1,3 +1,4 @@
+// Modified in this fork: shared worktree tabs and close confirmation.
 use super::*;
 
 #[derive(Clone, Debug)]
@@ -502,13 +503,7 @@ impl ClientShellState {
         let Some(snapshot) = self.snapshot.as_deref() else {
             return 0;
         };
-        snapshot
-            .tabs
-            .iter()
-            .filter(|tab| {
-                Some(tab.workspace_id.as_str()) == snapshot.focused_workspace_id.as_deref()
-            })
-            .count()
+        super::tab_navigation::visible_tab_count(snapshot)
     }
 
     #[cfg(test)]

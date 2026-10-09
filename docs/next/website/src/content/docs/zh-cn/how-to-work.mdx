@@ -3,6 +3,8 @@ title: 使用 Herdr 的工作方式
 description: 在本地、SSH 内或通过远程连接运行 Herdr。
 ---
 
+{/* Modified in this fork: document shared worktree tabs and close behavior. */}
+
 在工作所在的地方运行 Herdr,从你所在的任何地方连接。
 
 Herdr 由一个后台会话服务器和一个或多个终端客户端组成。窗格在服务器中持续运行。客户端负责连接、分离和渲染会话。
@@ -16,6 +18,11 @@ herdr
 ```
 
 Herdr 会自动启动或连接到本地后台会话。你不需要管理 socket。在窗格里照常运行 shell、服务器、测试和智能体。
+
+
+同一 Git 仓库的主 checkout 和关联 worktree Space 共享标签栏。主 checkout 的标签在前，worktree 标签带有 Space 名称并按 Space 顺序排列。worktree 的初始标签保留，并与任务标签一起显示。选择标签会切换到它所属的 Space 和窗格，不移动进程，也不改变工作目录。不同仓库和服务器 endpoint 的标签栏保持独立。＋在当前 Space 创建标签，标签仅在所属 Space 内重排。标签过多时使用现有滚动控件。
+
+右键主 Space 并选择 Close group 会停止整个组的 Space 和窗格，包括控制标签。关闭子 Space 会停止该 checkout 的全部标签，也包括共用该 worktree 的其他任务。启用 confirm_close 时，确认显示 Space／窗格数量并提示未完成的工作也会停止，但不会检测未完成任务或未保存更改。需要保留工作时请取消。关闭 Space 保留 Git checkout、分支和文件；Delete worktree checkout... 是独立删除操作。
 
 用 `ctrl+b q` 分离客户端。窗格会继续运行。
 
