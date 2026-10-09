@@ -1,3 +1,4 @@
+// Modified by ryo1111-qqq on 2026-10-09: preserve legacy worktree JSON decoding.
 use std::collections::HashMap;
 
 use super::*;
@@ -791,6 +792,7 @@ fn worktree_request_and_response_round_trip() {
     let response = SuccessResponse {
         id: "req_worktree".into(),
         result: ResponseResult::WorktreeCreated {
+            already_open: Some(false),
             workspace: WorkspaceInfo {
                 workspace_id: "w_1".into(),
                 number: 2,
@@ -857,6 +859,24 @@ fn worktree_request_and_response_round_trip() {
     assert!(json.contains("\"worktree\""));
     let restored: SuccessResponse = serde_json::from_str(&json).unwrap();
     assert_eq!(restored, response);
+    let mut legacy: serde_json::Value = serde_json::from_str(&json).unwrap();
+    legacy["result"]
+        .as_object_mut()
+        .unwrap()
+        .remove("already_open");
+    let restored: SuccessResponse = serde_json::from_value(legacy.clone()).unwrap();
+    assert!(matches!(
+        restored.result,
+        ResponseResult::WorktreeCreated {
+            already_open: None,
+            ..
+        }
+    ));
+    assert!(!serde_json::to_string(&restored)
+        .unwrap()
+        .contains("already_open"));
+    legacy["result"]["already_open"] = serde_json::json!("false");
+    assert!(serde_json::from_value::<SuccessResponse>(legacy).is_err());
 }
 
 #[test]

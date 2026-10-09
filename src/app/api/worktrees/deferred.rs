@@ -1,3 +1,4 @@
+// Modified by ryo1111-qqq on 2026-10-09: return atomic workspace creation provenance.
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -512,6 +513,7 @@ impl App {
                     .root_pane_info(ws_idx, tab_idx)
                     .expect("created worktree workspace should have an active root pane"),
                 worktree,
+                already_open: Some(!created_workspace),
             },
         );
         Self::send_api_response(api.respond_to, response);
