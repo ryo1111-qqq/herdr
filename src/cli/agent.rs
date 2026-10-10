@@ -957,3 +957,141 @@ fn parse_timeout(value: &str) -> Result<u64, i32> {
         2
     })
 }
+
+/// Extract one structured launch without interpreting any shell syntax.
+pub(super) fn take_agent_launch(
+    args: &[String],
+) -> std::io::Result<(Vec<String>, Option<crate::api::schema::AgentLaunchParams>)> {
+    let mut plain = Vec::new();
+    let mut launch = None;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--agent-launch" {
+            if launch.is_some() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "duplicate agent launch",
+                ));
+            }
+            let value = args.get(index + 1).ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "missing agent launch JSON",
+                )
+            })?;
+            let mut parsed: crate::api::schema::AgentLaunchParams = serde_json::from_str(value)
+                .map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "invalid agent launch JSON",
+                    )
+                })?;
+            if let Some(kind) = crate::detect::parse_agent_label(&parsed.kind) {
+                parsed.kind = crate::detect::agent_label(kind).to_owned();
+            }
+            launch = Some(parsed);
+            index += 2;
+        } else {
+            plain.push(args[index].clone());
+            index += 1;
+        }
+    }
+    Ok((plain, launch))
+}
+
+pub(super) fn create_direct_agent(
+    method: Method,
+    launch: &crate::api::schema::AgentLaunchParams,
+) -> std::io::Result<i32> {
+    // Submit creation exactly once; only startup observation is repeated.
+    let mut response = super::send_request(&Request {
+        id: "cli:agent:create".into(),
+        method,
+    })?;
+    if response.get("error").is_some() {
+        return super::print_response(&response);
+    }
+    let agent = &response["result"]["agent"];
+    let Some(pane_id) = agent["pane_id"].as_str() else {
+        return Err(std::io::Error::other(
+            "created agent identity missing; do not repeat creation",
+        ));
+    };
+    let Some(terminal_id) = agent["terminal_id"].as_str() else {
+        return Err(std::io::Error::other(
+            "created terminal identity missing; do not repeat creation",
+        ));
+    };
+    match wait_for_named_agent(
+        &launch.name,
+        pane_id,
+        std::time::Duration::from_millis(launch.timeout_ms.unwrap_or(30000)),
+        &launch.kind,
+        terminal_id,
+    )? {
+        Ok(agent) => {
+            response["result"]["agent"] = agent;
+            super::print_response(&response)
+        }
+        Err(error) => super::print_response(&error),
+    }
+}
+
+#[cfg(test)]
+mod direct_creation_tests {
+    use super::take_agent_launch;
+
+    #[test]
+    fn direct_agent_launch_cli_keeps_literal_argv_env_and_legacy_options() {
+        let launch = r#"{"name":"pi-owned","kind":"pi","command":["pi","a b","$(touch never)"],"env":{"OWNED":"x;$(touch never)"}}"#;
+        let args = [
+            "--cwd",
+            "/owned path",
+            "--agent-launch",
+            launch,
+            "--no-focus",
+        ]
+        .map(String::from);
+        let (plain, launch) = take_agent_launch(&args).unwrap();
+        assert_eq!(plain, ["--cwd", "/owned path", "--no-focus"]);
+        let launch = launch.unwrap();
+        assert_eq!(launch.command, ["pi", "a b", "$(touch never)"]);
+        assert_eq!(launch.env["OWNED"], "x;$(touch never)");
+        assert!(take_agent_launch(&plain).unwrap().1.is_none());
+    }
+
+    #[test]
+    fn direct_agent_launch_cli_rejects_missing_invalid_and_duplicate_specs() {
+        let launch = r#"{"name":"pi-owned","kind":"pi","command":["pi"]}"#;
+        for args in [
+            vec!["--agent-launch"],
+            vec!["--agent-launch", "{}"],
+            vec!["--agent-launch", launch, "--agent-launch", launch],
+        ] {
+            assert!(
+                take_agent_launch(&args.into_iter().map(String::from).collect::<Vec<_>>()).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn direct_agent_launch_cli_canonicalizes_kind_aliases_and_case() {
+        for (kind, expected, executable) in [
+            ("claude-code", "claude", "claude"),
+            ("CLAUDE", "claude", "claude"),
+            ("Claude-Code", "claude", "claude"),
+            ("PI", "pi", "pi"),
+            ("Codex", "codex", "codex"),
+            ("cursor-agent", "cursor", "cursor-agent"),
+        ] {
+            let spec = serde_json::json!({
+                "name": "reviewer", "kind": kind, "command": [executable, "a b"]
+            });
+            let (_, launch) =
+                take_agent_launch(&["--agent-launch".into(), spec.to_string()]).unwrap();
+            let launch = launch.unwrap();
+            assert_eq!(launch.kind, expected, "kind: {kind}");
+            assert_eq!(launch.command, [executable, "a b"]);
+        }
+    }
+}

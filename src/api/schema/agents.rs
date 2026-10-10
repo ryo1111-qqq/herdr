@@ -235,3 +235,24 @@ pub struct AgentSessionInfo {
     pub kind: crate::agent_resume::AgentSessionRefKind,
     pub value: String,
 }
+
+// Direct creation is a separate JSON contract; existing creation shapes stay frozen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AgentLaunchParams {
+    pub name: String,
+    pub kind: String,
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AgentCreateParams<T> {
+    #[serde(flatten)]
+    pub create: T,
+    pub agent: AgentLaunchParams,
+}

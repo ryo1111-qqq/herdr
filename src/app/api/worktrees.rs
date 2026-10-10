@@ -71,9 +71,28 @@ impl App {
         &mut self,
         id: String,
         params: WorktreeOpenParams,
-        mut source: WorktreeSource,
+        source: WorktreeSource,
         entry: crate::worktree::ExistingWorktree,
     ) -> String {
+        self.finish_worktree_open_with_agent(id, params, source, entry, None)
+    }
+
+    fn finish_worktree_open_with_agent(
+        &mut self,
+        id: String,
+        params: WorktreeOpenParams,
+        mut source: WorktreeSource,
+        entry: crate::worktree::ExistingWorktree,
+        agent: Option<crate::api::schema::AgentLaunchParams>,
+    ) -> String {
+        let launch = match agent
+            .as_ref()
+            .map(|agent| self.prepare_direct_agent(agent))
+            .transpose()
+        {
+            Ok(launch) => launch,
+            Err((code, message)) => return encode_error(id, &code, message),
+        };
         if entry.is_bare || entry.is_prunable {
             return encode_error(id, "worktree_not_found", "worktree cannot be opened");
         }
@@ -93,6 +112,15 @@ impl App {
         let canonical_source = crate::worktree::canonical_or_original(&source.source_checkout_path);
         let target_is_source = canonical_path == canonical_source;
         let already_open = self.open_workspace_idx_for_checkout(&canonical_path);
+        if launch.is_some()
+            && (already_open.is_some() || target_is_source || source.workspace_idx.is_none())
+        {
+            return encode_error(
+                id,
+                "invalid_agent_target",
+                "direct worktree launch requires a new child workspace and an existing parent",
+            );
+        }
         let defer_source_created_event = target_is_source && already_open.is_none();
         let created_source_workspace =
             match self.ensure_source_parent_membership(&mut source, !defer_source_created_event) {
@@ -113,7 +141,15 @@ impl App {
             }
             (ws_idx, created_source_workspace)
         } else {
-            match self.create_workspace_with_options(entry.path.clone(), params.focus) {
+            match self.create_workspace_with_direct_launch(
+                entry.path.clone(),
+                params.focus,
+                launch
+                    .as_ref()
+                    .map(|launch| launch.env.clone())
+                    .unwrap_or_default(),
+                launch.as_ref(),
+            ) {
                 Ok(ws_idx) => (ws_idx, true),
                 Err(err) => return encode_error(id, "worktree_open_failed", err.to_string()),
             }
@@ -141,14 +177,26 @@ impl App {
                 });
             }
         }
+        let tab_idx = self.state.workspaces[ws_idx].active_tab;
+        if let Some(label) = launch.as_ref().and_then(|launch| launch.tab_label.clone()) {
+            self.state.workspaces[ws_idx].tabs[tab_idx].set_custom_name(label);
+        }
         self.state.mark_session_dirty();
         if created_workspace {
             self.emit_workspace_open_events(ws_idx);
         }
 
-        let tab_idx = self.state.workspaces[ws_idx].active_tab;
         let worktree = self.worktree_info_for_entry(&source, entry);
         self.emit_worktree_opened_event(ws_idx, worktree.clone(), already_open.is_some());
+        if launch.is_some() {
+            return self.created_agent_response(
+                id,
+                ws_idx,
+                tab_idx,
+                self.state.workspaces[ws_idx].tabs[tab_idx].root_pane,
+                Some(worktree),
+            );
+        }
         encode_success(
             id,
             ResponseResult::WorktreeOpened {
@@ -1157,6 +1205,7 @@ mod tests {
         app.handle_api_worktree_add_finished(WorktreeAddResult {
             path: checkout.clone(),
             api_request: Some(ApiWorktreeAddRequest {
+                launch: None,
                 id: "req".into(),
                 operation_id: 9,
                 checkout_key,
@@ -1218,6 +1267,7 @@ mod tests {
         app.handle_api_worktree_add_finished(WorktreeAddResult {
             path: checkout.clone(),
             api_request: Some(ApiWorktreeAddRequest {
+                launch: None,
                 id: "req".into(),
                 operation_id: 9,
                 checkout_key,

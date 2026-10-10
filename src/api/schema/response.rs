@@ -100,6 +100,14 @@ pub enum ResponseResult {
     AgentInfo {
         agent: AgentInfo,
     },
+    AgentCreated {
+        workspace: WorkspaceInfo,
+        tab: TabInfo,
+        pane: Box<PaneInfo>,
+        agent: AgentInfo,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worktree: Option<WorktreeInfo>,
+    },
     AgentStarted {
         agent: AgentInfo,
         argv: Vec<String>,

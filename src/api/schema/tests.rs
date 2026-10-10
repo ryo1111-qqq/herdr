@@ -3,6 +3,38 @@ use std::collections::HashMap;
 
 use super::*;
 
+#[test]
+fn direct_agent_creation_methods_accept_structured_argv_and_preserve_legacy_requests() {
+    for method in [
+        "worktree.create_agent",
+        "worktree.open_agent",
+        "tab.create_agent",
+        "pane.split_agent",
+    ] {
+        let value = serde_json::json!({
+            "id": "create-once", "method": method, "params": {
+                "cwd": "/tmp/owned worktree", "path": "/tmp/owned worktree",
+                "direction": "right", "agent": {
+                    "name": "pi-owned", "kind": "pi", "command": ["pi", "$(touch never)", "a b"],
+                    "env": {"OWNED_VALUE": "x;$(touch never)"}, "tab_label": "owned job"
+                }
+            }
+        });
+        let parsed = serde_json::from_value::<Request>(value.clone());
+        assert!(parsed.is_ok(), "missing direct creation method: {method}");
+        assert_eq!(
+            serde_json::to_value(parsed.unwrap()).unwrap()["params"]["agent"],
+            value["params"]["agent"]
+        );
+    }
+    let legacy =
+        serde_json::json!({"id": "legacy", "method": "tab.create", "params": {"cwd": "/tmp"}});
+    let old: Request = serde_json::from_value(legacy).unwrap();
+    assert!(serde_json::to_value(old).unwrap()["params"]
+        .get("agent")
+        .is_none());
+}
+
 fn protocol_schema_entry<T: schemars::JsonSchema>(name: &str) -> serde_json::Value {
     let mut schema = serde_json::to_value(schemars::schema_for!(T)).unwrap();
     rewrite_schema_refs(&mut schema, name);

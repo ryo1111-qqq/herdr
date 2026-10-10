@@ -140,6 +140,12 @@ impl App {
         respond_to: std::sync::mpsc::Sender<String>,
         client_local: bool,
     ) {
+        if let Method::WorktreeOpenAgent(params) = &request.method {
+            if let Err((code, message)) = self.prepare_direct_agent(&params.agent) {
+                let _ = respond_to.send(encode_error(request.id, &code, message));
+                return;
+            }
+        }
         let (workspace_id, cwd, allow_linked, trust_repository) = match &request.method {
             Method::WorktreeList(params) => (
                 &params.workspace_id,
@@ -161,6 +167,22 @@ impl App {
                     &params.cwd,
                     false,
                     params.trust_repository,
+                )
+            }
+            Method::WorktreeOpenAgent(params) => {
+                if params.create.path.is_some() == params.create.branch.is_some() {
+                    let _ = respond_to.send(encode_error(
+                        request.id,
+                        "invalid_request",
+                        "exactly one of path or branch is required",
+                    ));
+                    return;
+                }
+                (
+                    &params.create.workspace_id,
+                    &params.create.cwd,
+                    false,
+                    params.create.trust_repository,
                 )
             }
             _ => unreachable!("only worktree list/open use background discovery"),
@@ -197,7 +219,12 @@ impl App {
                             trust_repository,
                         )
                         .map_err(|err| ApiFailure::new("worktree_list_failed", err))?;
-                        if let Method::WorktreeOpen(params) = &request.method {
+                        let open = match &request.method {
+                            Method::WorktreeOpen(params) => Some(params),
+                            Method::WorktreeOpenAgent(params) => Some(&params.create),
+                            _ => None,
+                        };
+                        if let Some(params) = open {
                             entries = vec![find_worktree_entry(
                                 entries,
                                 params.path.clone(),
@@ -288,6 +315,16 @@ impl App {
                             .into_iter()
                             .next()
                             .expect("open discovery selects one worktree"),
+                    ),
+                    Method::WorktreeOpenAgent(params) => self.finish_worktree_open_with_agent(
+                        result.request.id,
+                        params.create,
+                        source,
+                        data.entries
+                            .into_iter()
+                            .next()
+                            .expect("open discovery selects one worktree"),
+                        Some(params.agent),
                     ),
                     _ => unreachable!("only worktree list/open use background discovery"),
                 }

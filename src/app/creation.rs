@@ -129,20 +129,49 @@ impl App {
         focus: bool,
         extra_env: Vec<(String, String)>,
     ) -> std::io::Result<usize> {
+        self.create_workspace_with_direct_launch(initial_cwd, focus, extra_env, None)
+    }
+
+    pub(crate) fn create_workspace_with_direct_launch(
+        &mut self,
+        initial_cwd: PathBuf,
+        focus: bool,
+        extra_env: Vec<(String, String)>,
+        launch: Option<&super::api::direct_agent::PreparedAgentLaunch>,
+    ) -> std::io::Result<usize> {
         let (rows, cols) = self.state.new_pane_size(crate::ui::NewPanePlacement::Alone);
-        let (ws, terminal, runtime) = Workspace::new_with_extra_env(
-            initial_cwd,
-            rows,
-            cols,
-            self.state.pane_scrollback_limit_bytes,
-            self.state.host_terminal_theme,
-            self.state.host_terminal_appearance,
-            crate::pane::PaneShellConfig::new(&self.state.default_shell, self.state.shell_mode),
-            self.event_tx.clone(),
-            self.render_notify.clone(),
-            self.render_dirty.clone(),
-            extra_env,
-        )?;
+        let (ws, mut terminal, runtime) = if let Some(launch) = launch {
+            Workspace::new_argv_command(
+                initial_cwd,
+                rows,
+                cols,
+                self.state.pane_scrollback_limit_bytes,
+                self.state.host_terminal_theme,
+                self.state.host_terminal_appearance,
+                self.event_tx.clone(),
+                self.render_notify.clone(),
+                self.render_dirty.clone(),
+                &launch.argv,
+                extra_env,
+            )?
+        } else {
+            Workspace::new_with_extra_env(
+                initial_cwd,
+                rows,
+                cols,
+                self.state.pane_scrollback_limit_bytes,
+                self.state.host_terminal_theme,
+                self.state.host_terminal_appearance,
+                crate::pane::PaneShellConfig::new(&self.state.default_shell, self.state.shell_mode),
+                self.event_tx.clone(),
+                self.render_notify.clone(),
+                self.render_dirty.clone(),
+                extra_env,
+            )?
+        };
+        if let Some(launch) = launch {
+            launch.attach(&mut terminal);
+        }
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
         self.state.workspaces.push(ws);

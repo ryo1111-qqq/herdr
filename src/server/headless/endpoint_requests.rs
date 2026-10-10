@@ -106,13 +106,17 @@ impl HeadlessServer {
             let deferred_worktree = matches!(
                 &request.method,
                 api::schema::Method::WorktreeCreate(_)
+                    | api::schema::Method::WorktreeCreateAgent(_)
                     | api::schema::Method::WorktreeRemove(_)
                     | api::schema::Method::WorktreeList(_)
                     | api::schema::Method::WorktreeOpen(_)
+                    | api::schema::Method::WorktreeOpenAgent(_)
             );
             let deferred_navigation = match &request.method {
                 api::schema::Method::WorktreeCreate(params) => params.focus,
+                api::schema::Method::WorktreeCreateAgent(params) => params.create.focus,
                 api::schema::Method::WorktreeOpen(params) => params.focus,
+                api::schema::Method::WorktreeOpenAgent(params) => params.create.focus,
                 _ => false,
             };
             client.shell_deferred_navigation_request_id =

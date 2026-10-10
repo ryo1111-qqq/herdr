@@ -73,6 +73,8 @@ fn worktree_list(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn worktree_create(args: &[String]) -> std::io::Result<i32> {
+    let (args, launch) = super::agent::take_agent_launch(args)?;
+    let args = args.as_slice();
     let mut workspace_id = None;
     let mut cwd = None;
     let mut branch = None;
@@ -154,12 +156,12 @@ fn worktree_create(args: &[String]) -> std::io::Result<i32> {
     }
     if workspace_id.is_some() && cwd.is_some() {
         eprintln!(
-            "usage: herdr worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--trust-repository]"
+            "usage: herdr worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--trust-repository] [--agent-launch JSON]"
         );
         return Ok(2);
     }
 
-    super::runtime::worktree_create(WorktreeCreateParams {
+    let params = WorktreeCreateParams {
         workspace_id,
         cwd,
         branch,
@@ -168,10 +170,23 @@ fn worktree_create(args: &[String]) -> std::io::Result<i32> {
         label,
         focus,
         trust_repository,
-    })
+    };
+    if let Some(agent) = launch {
+        let method = crate::api::schema::Method::WorktreeCreateAgent(
+            crate::api::schema::AgentCreateParams {
+                create: params,
+                agent: agent.clone(),
+            },
+        );
+        super::agent::create_direct_agent(method, &agent)
+    } else {
+        super::runtime::worktree_create(params)
+    }
 }
 
 fn worktree_open(args: &[String]) -> std::io::Result<i32> {
+    let (args, launch) = super::agent::take_agent_launch(args)?;
+    let args = args.as_slice();
     let mut workspace_id = None;
     let mut cwd = None;
     let mut path = None;
@@ -244,18 +259,18 @@ fn worktree_open(args: &[String]) -> std::io::Result<i32> {
     }
     if workspace_id.is_some() && cwd.is_some() {
         eprintln!(
-            "usage: herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--trust-repository]"
+            "usage: herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--trust-repository] [--agent-launch JSON]"
         );
         return Ok(2);
     }
     if path.is_some() == branch.is_some() {
         eprintln!(
-            "usage: herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--trust-repository]"
+            "usage: herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--trust-repository] [--agent-launch JSON]"
         );
         return Ok(2);
     }
 
-    super::runtime::worktree_open(WorktreeOpenParams {
+    let params = WorktreeOpenParams {
         workspace_id,
         cwd,
         path,
@@ -263,7 +278,17 @@ fn worktree_open(args: &[String]) -> std::io::Result<i32> {
         label,
         focus,
         trust_repository,
-    })
+    };
+    if let Some(agent) = launch {
+        let method =
+            crate::api::schema::Method::WorktreeOpenAgent(crate::api::schema::AgentCreateParams {
+                create: params,
+                agent: agent.clone(),
+            });
+        super::agent::create_direct_agent(method, &agent)
+    } else {
+        super::runtime::worktree_open(params)
+    }
 }
 
 fn worktree_remove(args: &[String]) -> std::io::Result<i32> {
@@ -314,10 +339,10 @@ fn print_worktree_help() {
     eprintln!("herdr worktree commands:");
     eprintln!("  herdr worktree list [--workspace ID | --cwd PATH] [--trust-repository]");
     eprintln!(
-        "  herdr worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--trust-repository]"
+        "  herdr worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--trust-repository] [--agent-launch JSON]"
     );
     eprintln!(
-        "  herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--trust-repository]"
+        "  herdr worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--trust-repository] [--agent-launch JSON]"
     );
     eprintln!("  herdr worktree remove --workspace ID [--force] [--trust-repository]");
 }

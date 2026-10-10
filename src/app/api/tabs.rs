@@ -45,6 +45,23 @@ impl App {
     }
 
     pub(super) fn handle_tab_create(&mut self, id: String, params: TabCreateParams) -> String {
+        self.handle_tab_create_with_agent(id, params, None)
+    }
+
+    pub(super) fn handle_tab_create_with_agent(
+        &mut self,
+        id: String,
+        params: TabCreateParams,
+        agent: Option<crate::api::schema::AgentLaunchParams>,
+    ) -> String {
+        let launch = match agent
+            .as_ref()
+            .map(|agent| self.prepare_direct_agent(agent))
+            .transpose()
+        {
+            Ok(launch) => launch,
+            Err((code, message)) => return encode_error(id, &code, message),
+        };
         let TabCreateParams {
             workspace_id,
             cwd,
@@ -74,25 +91,55 @@ impl App {
             Ok(env) => env,
             Err((code, message)) => return encode_error(id, &code, message),
         };
+        if launch
+            .as_ref()
+            .is_some_and(|launch| launch.tab_label.as_ref() != label.as_ref())
+        {
+            return encode_error(
+                id,
+                "invalid_agent_launch",
+                "creation tab label differs from agent tab label",
+            );
+        }
+        let mut extra_env = extra_env;
+        if let Some(launch) = &launch {
+            extra_env.extend(launch.env.clone());
+        }
         let result = self
             .state
             .workspaces
             .get_mut(ws_idx)
             .ok_or_else(|| std::io::Error::other("workspace disappeared"))
             .and_then(|ws| {
-                ws.create_tab(
-                    rows,
-                    cols,
-                    cwd,
-                    scrollback_limit_bytes,
-                    host_terminal_theme,
-                    host_terminal_appearance,
-                    crate::pane::PaneShellConfig::new(&default_shell, self.state.shell_mode),
-                    extra_env,
-                )
+                if let Some(launch) = &launch {
+                    ws.create_tab_argv_command(
+                        rows,
+                        cols,
+                        cwd,
+                        &launch.argv,
+                        extra_env,
+                        scrollback_limit_bytes,
+                        host_terminal_theme,
+                        host_terminal_appearance,
+                    )
+                } else {
+                    ws.create_tab(
+                        rows,
+                        cols,
+                        cwd,
+                        scrollback_limit_bytes,
+                        host_terminal_theme,
+                        host_terminal_appearance,
+                        crate::pane::PaneShellConfig::new(&default_shell, self.state.shell_mode),
+                        extra_env,
+                    )
+                }
             });
         match result {
-            Ok((tab_idx, terminal, runtime)) => {
+            Ok((tab_idx, mut terminal, runtime)) => {
+                if let Some(launch) = &launch {
+                    launch.attach(&mut terminal);
+                }
                 self.terminal_runtimes.insert(terminal.id.clone(), runtime);
                 self.state.terminals.insert(terminal.id.clone(), terminal);
                 self.state.remove_alias_shadowed_by_new_pane(
@@ -119,6 +166,15 @@ impl App {
                 }
                 self.schedule_session_save();
                 self.emit_tab_created_events(ws_idx, tab_idx);
+                if launch.is_some() {
+                    return self.created_agent_response(
+                        id,
+                        ws_idx,
+                        tab_idx,
+                        self.state.workspaces[ws_idx].tabs[tab_idx].root_pane,
+                        None,
+                    );
+                }
                 encode_success(
                     id,
                     self.tab_created_result(ws_idx, tab_idx)

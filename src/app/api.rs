@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 mod agent_view;
 mod agents;
+pub(crate) mod direct_agent;
 mod env;
 mod integrations;
 mod layouts;
@@ -42,6 +43,7 @@ impl App {
                 let changes_workspace = matches!(
                     &result.request.method,
                     crate::api::schema::Method::WorktreeOpen(_)
+                        | crate::api::schema::Method::WorktreeOpenAgent(_)
                 );
                 self.handle_api_worktree_read_finished(*result);
                 changes_workspace
@@ -1082,12 +1084,19 @@ impl App {
             Method::WorkspaceClose(target) => {
                 return self.handle_workspace_close(request.id, target);
             }
-            Method::WorktreeList(_) | Method::WorktreeOpen(_) => {
+            Method::WorktreeList(_) | Method::WorktreeOpen(_) | Method::WorktreeOpenAgent(_) => {
                 return responses::encode_error(
                     request.id,
                     "invalid_request",
                     "worktree discovery is handled asynchronously by the app runtime",
                 );
+            }
+            Method::WorktreeCreateAgent(_) => {
+                return responses::encode_error(
+                    request.id,
+                    "invalid_request",
+                    "worktree create is handled asynchronously",
+                )
             }
             Method::WorktreeCreate(params) => {
                 let _ = params;
@@ -1108,6 +1117,13 @@ impl App {
             Method::TabList(params) => return self.handle_tab_list(request.id, params),
             Method::TabGet(target) => return self.handle_tab_get(request.id, target),
             Method::TabCreate(params) => return self.handle_tab_create(request.id, params),
+            Method::TabCreateAgent(params) => {
+                return self.handle_tab_create_with_agent(
+                    request.id,
+                    params.create,
+                    Some(params.agent),
+                )
+            }
             Method::TabFocus(target) => return self.handle_tab_focus(request.id, target),
             Method::TabRename(params) => return self.handle_tab_rename(request.id, params),
             Method::TabMove(params) => return self.handle_tab_move(request.id, params),
@@ -1141,6 +1157,13 @@ impl App {
                 return self.handle_agent_send_keys(request.id, params);
             }
             Method::PaneSplit(params) => return self.handle_pane_split(request.id, params),
+            Method::PaneSplitAgent(params) => {
+                return self.handle_pane_split_with_agent(
+                    request.id,
+                    params.create,
+                    Some(params.agent),
+                )
+            }
             Method::PaneSwap(params) => return self.handle_pane_swap(request.id, params),
             Method::PaneMove(params) => return self.handle_pane_move(request.id, params),
             Method::PaneZoom(params) => return self.handle_pane_zoom(request.id, params),

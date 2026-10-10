@@ -51,6 +51,8 @@ fn tab_list(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_create(args: &[String]) -> std::io::Result<i32> {
+    let (args, launch) = super::agent::take_agent_launch(args)?;
+    let args = args.as_slice();
     let mut workspace_id = None;
     let mut cwd = None;
     let mut focus = false;
@@ -114,13 +116,23 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
         }
     }
 
-    super::runtime::tab_create(TabCreateParams {
+    let params = TabCreateParams {
         workspace_id,
         cwd,
         focus,
         label,
         env,
-    })
+    };
+    if let Some(agent) = launch {
+        let method =
+            crate::api::schema::Method::TabCreateAgent(crate::api::schema::AgentCreateParams {
+                create: params,
+                agent: agent.clone(),
+            });
+        super::agent::create_direct_agent(method, &agent)
+    } else {
+        super::runtime::tab_create(params)
+    }
 }
 
 fn tab_get(args: &[String]) -> std::io::Result<i32> {
@@ -178,7 +190,7 @@ fn print_tab_help() {
     eprintln!("herdr tab commands:");
     eprintln!("  herdr tab list [--workspace <workspace_id>]");
     eprintln!(
-        "  herdr tab create [--workspace <workspace_id>] [--cwd PATH] [--label TEXT] [--env KEY=VALUE] [--focus] [--no-focus]"
+        "  herdr tab create [--workspace <workspace_id>] [--cwd PATH] [--label TEXT] [--env KEY=VALUE] [--focus] [--no-focus] [--agent-launch JSON]"
     );
     eprintln!("  herdr tab get <tab_id>");
     eprintln!("  herdr tab focus <tab_id>");

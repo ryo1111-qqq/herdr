@@ -344,6 +344,37 @@ impl Workspace {
         )
     }
 
+    // Root creation carries the same geometry, host context and event channels as shell creation.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_argv_command(
+        initial_cwd: PathBuf,
+        rows: u16,
+        cols: u16,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        host_terminal_appearance: Option<crate::terminal_theme::HostAppearance>,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<RenderSignal>,
+        argv: &[String],
+        extra_env: Vec<(String, String)>,
+    ) -> std::io::Result<(Self, TerminalState, TerminalRuntime)> {
+        Self::new_with_tab(
+            initial_cwd,
+            rows,
+            cols,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            host_terminal_appearance,
+            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin),
+            events,
+            render_notify,
+            render_dirty,
+            Some(argv),
+            extra_env,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn new_with_tab(
         initial_cwd: PathBuf,
